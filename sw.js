@@ -1,6 +1,6 @@
 /* THE MAZE service worker: caches the game so it works offline after the first visit.
    Change VERSION when you upload a new index.html, so everyone gets the update. */
-const VERSION='maze-v2';
+const VERSION='maze-v3';
 const FILES=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(VERSION).then(c=>c.addAll(FILES)).then(()=>self.skipWaiting()))});
 self.addEventListener('activate',e=>{e.waitUntil(caches.keys().then(k=>Promise.all(k.filter(x=>x!==VERSION).map(x=>caches.delete(x)))).then(()=>self.clients.claim()))});

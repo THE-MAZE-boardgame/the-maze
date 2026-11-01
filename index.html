@@ -442,7 +442,9 @@ G.QRDEC=function(data,w,h,isGray){
    A card of another sector than the current one is always refused.
    The card NUMBER does not matter: the app picks the content (or a Griever attack) at random. */
 const CODEWORD='ESCAPE';
-const GRIEVER_TIME=20, GRIEVER_ATTEMPTS=2;
+const GRIEVER_TIME=20, GRIEVER_ATTEMPTS=1; // Griever riddle: 20 seconds, only 1 attempt
+const QUIZ_TRIES_BLUE=2, QUIZ_TRIES_PURPLE=1; // blue: 2 attempts, purple: 1 attempt. A final wrong answer costs a life.
+const LIFE_BONUS=1; // lives gained when a new sector is unlocked
 /* Griever attacks per sector (sector 1..8): [min,max]. Fixed number when min=max, random between them otherwise.
    Attacks only happen on blue and purple cards, on random scans. */
 const GRIEVER_ATTACKS=[[1,1],[1,1],[3,3],[1,1],[1,2],[1,2],[1,2],[2,2]];
@@ -501,7 +503,7 @@ const addPts=n=>{S.points=Math.max(0,S.points+n);render()},addLives=n=>{S.lives=
 const hasClue=()=>!!(S.cs&&S.cs[S.sector]); /* a yellow card must have been scanned in the current sector */
 function advance(){
  if(S.sector>=8)return;
- S.sector++;S.points=0;S.gv=null;S.lives=Math.min(5,S.lives+1);
+ S.sector++;S.points=0;S.gv=null;S.lives=Math.min(5,S.lives+LIFE_BONUS);
  SFX.unlock();render();showUnlock(S.sector)}
 function payUnlock(){
  const need=POINTS_NEEDED[S.sector-1];
@@ -527,7 +529,7 @@ function showUnlock(n){
  clearTimeout(unlT);unlT=setTimeout(hideUnlock,9000)}
 $('unl').onclick=hideUnlock;
 $('up').onclick=()=>{const need=POINTS_NEEDED[S.sector-1];if(S.sector>=8||S.points<need||!hasClue())return;
- modal(`<span class="badge green">UNLOCK</span><h2>Unlock sector ${String(S.sector+1).padStart(2,'0')}?</h2><p>This costs <b>${need} points</b>. Your points are reset to 0 in the new sector. You also get +1 life.</p><div class="row" style="justify-content:flex-start"><button class="btn" id="upy">Pay and unlock</button><button class="btn g" onclick="closeM()">Not yet</button></div>`)};
+ modal(`<span class="badge green">UNLOCK</span><h2>Unlock sector ${String(S.sector+1).padStart(2,'0')}?</h2><p>This costs <b>${need} points</b>. Your points are reset to 0 in the new sector. You also get +${LIFE_BONUS} life.</p><div class="row" style="justify-content:flex-start"><button class="btn" id="upy">Pay and unlock</button><button class="btn g" onclick="closeM()">Not yet</button></div>`)};
 document.addEventListener('click',e=>{if(e.target.id==='upy'){closeM();payUnlock()}});
 /* Griever schedule: per sector a fixed/random number of attacks, on random blue/purple scans */
 function grieverDue(sec){
@@ -549,14 +551,20 @@ function handle(raw){
  if((kind==='blue'||(kind==='purple'&&sec<8))&&grieverDue(sec))return griever();
  card(kind)}
 function quiz(kind,it,pts){
+ let left=kind==='blue'?QUIZ_TRIES_BLUE:QUIZ_TRIES_PURPLE; /* blue: 2 attempts, purple: 1 attempt */
  reveal(`<span class="badge ${kind}">${LABEL[kind]}</span><h2>${kind==='purple'?'Expert task':'Challenge'}</h2><p>${it.q}</p><div class="opts">${it.o.map((o,i)=>`<button class="opt" data-i="${i}">${o}</button>`).join('')}</div><div id="rs"></div>`);
  setTimeout(()=>document.querySelectorAll('#mb .opt').forEach(b=>b.onclick=()=>{
-  const ok=+b.dataset.i===it.a;
-  document.querySelectorAll('#mb .opt').forEach(x=>{x.disabled=true;if(+x.dataset.i===it.a)x.classList.add('ok')});
-  let m;if(ok){SFX.ok();m=kind==='purple'?(hasClue()?'Correct! The next sector is unlocked directly.':'Correct! But you first need a clue (yellow card) from this sector. Come back to this card later.'):`Correct! +${pts} points.`;if(kind!=='purple')addPts(pts)}
-  else{b.classList.add('no');SFX.bad();m=kind==='purple'?'Wrong answer. The sector stays locked.':'Wrong answer.'}
-  $('rs').innerHTML=`<div class="res ${ok?'ok':'no'}">${m}</div><button class="btn" id="cn">Continue</button>`;
-  $('cn').onclick=()=>{closeM();if(ok&&kind==='purple'&&hasClue())advance()}}),900)}
+  const all=document.querySelectorAll('#mb .opt'),ok=+b.dataset.i===it.a;
+  const lock=()=>all.forEach(x=>{x.disabled=true;if(+x.dataset.i===it.a)x.classList.add('ok')});
+  const end=(m,after)=>{$('rs').innerHTML=`<div class="res ${ok?'ok':'no'}">${m}</div><button class="btn" id="cn">Continue</button>`;$('cn').onclick=()=>{closeM();if(after)after()}};
+  if(ok){lock();SFX.ok();
+   const m=kind==='purple'?(hasClue()?'Correct! The next sector is unlocked directly.':'Correct! But you first need a clue (yellow card) from this sector. Come back to this card later.'):`Correct! +${pts} points.`;
+   if(kind!=='purple')addPts(pts);
+   end(m,kind==='purple'&&hasClue()?advance:null);return}
+  b.classList.add('no');b.disabled=true;SFX.bad();left--;
+  if(left>0){$('rs').innerHTML=`<div class="res no">Wrong answer. You have ${left} more attempt${left>1?'s':''}.</div>`;return}
+  lock();const lastLife=S.lives<=1;if(!lastLife)loseLife();
+  end('Wrong answer. The team loses a life.',lastLife?loseLife:null)}),900)}
 function card(kind){
  const t=tier(S.sector);
  if(kind==='blue')return quiz(kind,pick('b'+t,POOL.blue[t]),t+1);
