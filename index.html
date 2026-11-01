@@ -469,7 +469,7 @@ const POOL={
 /* ================================================================== */
 const $=id=>document.getElementById(id),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const KEY='themaze_v2',LABEL={blue:'BLUE CARD',yellow:'YELLOW CARD',green:'GREEN CARD',purple:'PURPLE EXPERT CARD',red:'RED CARD'};
-let S={team:'',players:[],sector:1,lives:5,points:0,clues:[],done8:false,finished:false,gv:null,used:{},ms:0};
+let S={team:'',players:[],sector:1,lives:5,points:0,clues:[],done8:false,finished:false,gv:null,cs:{},used:{},ms:0};
 try{const x=JSON.parse(localStorage.getItem(KEY));if(x&&x.team)S=x}catch(e){}S.ms=S.ms||0;
 const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
 
@@ -493,22 +493,23 @@ function render(){
  num($('sec'),S.sector,n=>String(n).padStart(2,'0')+' / 08');num($('liv'),S.lives,n=>n+' / 5');num($('pts'),S.points);num($('clu'),S.clues.length);
  $('hr').innerHTML=[1,2,3,4,5].map(i=>`<i class="${i<=S.lives?'on':''}"></i>`).join('');
  $('sc').innerHTML=[1,2,3,4,5,6,7,8].map(i=>`<div class="${S.done8||i<S.sector?'done':i===S.sector?'cur':''}">${String(i).padStart(2,'0')}</div>`).join('');
- const nd=POINTS_NEEDED[S.sector-1],last=S.sector>=8,met=!last&&S.points>=nd;$('nd').className='need'+(met?' met':'');
- $('nd').textContent=last?'FINAL SECTOR: FIND THE CODEWORD':met?'ENOUGH POINTS: YOU CAN UNLOCK THE NEXT SECTOR':'NEXT SECTOR COSTS '+nd+' POINTS';
+ const nd=POINTS_NEEDED[S.sector-1],last=S.sector>=8,ck=hasClue(),pok=!last&&S.points>=nd,met=pok&&ck;$('nd').className='need'+(met?' met':'');
+ $('nd').textContent=last?(ck?'FINAL SECTOR: FIND THE CODEWORD':'FINAL SECTOR: FIND A CLUE (YELLOW CARD) FIRST'):met?'ENOUGH POINTS AND A CLUE: YOU CAN UNLOCK THE NEXT SECTOR':pok?'ENOUGH POINTS, BUT YOU NEED A CLUE (YELLOW CARD) FIRST':'NEXT SECTOR COSTS '+nd+' POINTS'+(ck?'':' + 1 CLUE');
  $('up').style.display=met?'':'none';$('up').textContent='Unlock sector '+String(S.sector+1).padStart(2,'0')+' (pay '+nd+' points)';
- $('tm').textContent=fmt(S.ms);$('fin').style.display=(last||S.done8)?'':'none';save()}
+ $('tm').textContent=fmt(S.ms);$('fin').style.display=((last&&ck)||S.done8)?'':'none';save()}
 const addPts=n=>{S.points=Math.max(0,S.points+n);render()},addLives=n=>{S.lives=Math.max(0,Math.min(5,S.lives+n));render()};
+const hasClue=()=>!!(S.cs&&S.cs[S.sector]); /* a yellow card must have been scanned in the current sector */
 function advance(){
  if(S.sector>=8)return;
  S.sector++;S.points=0;S.gv=null;S.lives=Math.min(5,S.lives+1);
  SFX.unlock();render();showUnlock(S.sector)}
 function payUnlock(){
  const need=POINTS_NEEDED[S.sector-1];
- if(S.sector>=8||S.points<need){SFX.bad();return}
+ if(S.sector>=8||S.points<need||!hasClue()){SFX.bad();return}
  advance()}
 function loseLife(){
  S.lives--;SFX.lose();
- if(S.lives<=0){const was=S.sector;S.sector=Math.max(1,S.sector-1);S.lives=5;S.gv=null;S.points=0;S.done8=false;render();
+ if(S.lives<=0){const was=S.sector;S.sector=Math.max(1,S.sector-1);S.lives=5;S.gv=null;S.points=0;S.done8=false;(S.cs=S.cs||{})[was]=0;render();
   modal(`<span class="badge red">ALL LIVES LOST</span><h2>${was>1?'Back to sector '+S.sector:'Restarting sector 1'}</h2><p>The team restarts this sector with 5 lives. Collected clues are kept.</p><button class="btn" onclick="closeM()">Continue</button>`)}
  else render()}
 function pick(key,arr){const u=S.used[key]=S.used[key]||[];let c=arr.map((_,i)=>i).filter(i=>!u.includes(i));if(!c.length){S.used[key]=[];c=arr.map((_,i)=>i)}const i=c[Math.random()*c.length|0];S.used[key].push(i);return arr[i]}
@@ -520,12 +521,12 @@ function showUnlock(n){
  const u=$('unl'),need=POINTS_NEEDED[n-1];
  $('us').textContent=String(n).padStart(2,'0');
  $('useg').innerHTML=[1,2,3,4,5,6,7,8].map(i=>`<i class="${i<n?'on':i===n?'on new':''}" style="animation-delay:${(.9+i*.1).toFixed(1)}s"></i>`).join('');
- $('un').innerHTML=n<8?`<b>${need}</b> points needed to unlock sector ${String(n+1).padStart(2,'0')}`:'Final sector. Collect the clues and find the codeword.';
+ $('un').innerHTML=n<8?`<b>${need}</b> points and at least 1 clue needed to unlock sector ${String(n+1).padStart(2,'0')}`:'Final sector. Find at least 1 clue and the codeword.';
  u.classList.remove('on');void u.offsetWidth;u.classList.add('on');
  SFX.unlock();setTimeout(()=>SFX.ok(),900);
  clearTimeout(unlT);unlT=setTimeout(hideUnlock,9000)}
 $('unl').onclick=hideUnlock;
-$('up').onclick=()=>{const need=POINTS_NEEDED[S.sector-1];if(S.sector>=8||S.points<need)return;
+$('up').onclick=()=>{const need=POINTS_NEEDED[S.sector-1];if(S.sector>=8||S.points<need||!hasClue())return;
  modal(`<span class="badge green">UNLOCK</span><h2>Unlock sector ${String(S.sector+1).padStart(2,'0')}?</h2><p>This costs <b>${need} points</b>. Your points are reset to 0 in the new sector. You also get +1 life.</p><div class="row" style="justify-content:flex-start"><button class="btn" id="upy">Pay and unlock</button><button class="btn g" onclick="closeM()">Not yet</button></div>`)};
 document.addEventListener('click',e=>{if(e.target.id==='upy'){closeM();payUnlock()}});
 /* Griever schedule: per sector a fixed/random number of attacks, on random blue/purple scans */
@@ -552,17 +553,17 @@ function quiz(kind,it,pts){
  setTimeout(()=>document.querySelectorAll('#mb .opt').forEach(b=>b.onclick=()=>{
   const ok=+b.dataset.i===it.a;
   document.querySelectorAll('#mb .opt').forEach(x=>{x.disabled=true;if(+x.dataset.i===it.a)x.classList.add('ok')});
-  let m;if(ok){SFX.ok();m=kind==='purple'?'Correct! The next sector is unlocked directly.':`Correct! +${pts} points.`;if(kind!=='purple')addPts(pts)}
+  let m;if(ok){SFX.ok();m=kind==='purple'?(hasClue()?'Correct! The next sector is unlocked directly.':'Correct! But you first need a clue (yellow card) from this sector. Come back to this card later.'):`Correct! +${pts} points.`;if(kind!=='purple')addPts(pts)}
   else{b.classList.add('no');SFX.bad();m=kind==='purple'?'Wrong answer. The sector stays locked.':'Wrong answer.'}
   $('rs').innerHTML=`<div class="res ${ok?'ok':'no'}">${m}</div><button class="btn" id="cn">Continue</button>`;
-  $('cn').onclick=()=>{closeM();if(ok&&kind==='purple')advance()}}),900)}
+  $('cn').onclick=()=>{closeM();if(ok&&kind==='purple'&&hasClue())advance()}}),900)}
 function card(kind){
  const t=tier(S.sector);
  if(kind==='blue')return quiz(kind,pick('b'+t,POOL.blue[t]),t+1);
  if(kind==='purple'){if(S.sector>=8){modal('<span class="badge purple">PURPLE CARD</span><h2>No expert cards here</h2><p>There are no purple cards in sector 8.</p><button class="btn" onclick="closeM()">Close</button>');return}return quiz(kind,pick('p'+t,POOL.purple[t]),0)}
  if(kind==='yellow'){
   const left=POOL.clues.filter(c=>!S.clues.includes(c)),c=left.length?left[Math.random()*left.length|0]:null;
-  if(c){S.clues.push(c);render();SFX.ok()}
+  (S.cs=S.cs||{})[S.sector]=1;if(c){S.clues.push(c);SFX.ok()}render();
   return reveal(`<span class="badge yellow">${LABEL.yellow}</span><h2>Clue found</h2>${c?`<div class="clue">${c}</div>`:'<p>You already hold every clue.</p>'}<button class="btn" onclick="closeM()">Noted</button>`)}
  if(kind==='green'){const g=pick('g',POOL.green);if(g.l)addLives(g.l);if(g.p)addPts(g.p);SFX.ok();
   return reveal(`<span class="badge green">${LABEL.green}</span><h2>Advantage</h2><p>${g.t}</p><button class="btn" onclick="closeM()">Done</button>`)}
@@ -660,7 +661,7 @@ $('go').onclick=()=>{
  if(pl.length<3||pl.length>6){$('serr').textContent='A team needs 3 to 6 players (you entered '+pl.length+'). Separate the names with commas.';$('pin').focus();return}
  if(new Set(pl.map(x=>x.toLowerCase())).size<pl.length){$('serr').textContent='Every player needs a different name.';$('pin').focus();return}
  $('serr').textContent='';
- S={team:t,players:pl,sector:1,lives:5,points:0,clues:[],done8:false,finished:false,gv:null,used:{},ms:0};
+ S={team:t,players:pl,sector:1,lives:5,points:0,clues:[],done8:false,finished:false,gv:null,cs:{},used:{},ms:0};
  tn(1,.01,'sine',.0001);render();intro()};
 function fin(){$('ftm').textContent=fmt(S.ms);$('fp').textContent=S.points;$('fc2').textContent=S.clues.length;$('ft').textContent=S.team;$('wt').textContent=S.team;$('win').style.display=S.finished?'block':'none';$('fform').style.display=S.finished?'none':'block'}
 $('fc').onclick=()=>{
